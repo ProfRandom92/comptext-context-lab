@@ -163,7 +163,7 @@ export const askProvider = createServerFn({ method: "POST" })
         pack_id: pack.id,
         provider: "lovable-ai",
         model,
-        response_json: parsed,
+        response_json: parsed as never,
         valid,
         error: errorText,
       })

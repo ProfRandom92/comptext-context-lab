@@ -32,7 +32,9 @@ function PackPage() {
   if (isLoading) return <AppShell><p className="p-6 font-mono text-sm text-muted-foreground">loading…</p></AppShell>;
   if (!data) return null;
   const { pack, proposals } = data;
+  const packJsonObj = (pack.pack_json ?? {}) as { files?: { path: string; size: number; sha256: string }[] };
   const packJson = JSON.stringify(pack.pack_json, null, 2);
+  const files = packJsonObj.files ?? [];
 
   const runProvider = async (provider: "lovable-ai" | "dummy") => {
     setBusyProvider(provider);
@@ -89,7 +91,7 @@ function PackPage() {
                 <Card>
                   <CardContent className="p-0 max-h-[60vh] overflow-auto">
                     <ul className="divide-y divide-border">
-                      {pack.pack_json.files.map((f: { path: string; size: number; sha256: string }) => (
+                      {files.map((f) => (
                         <li key={f.path} className="px-4 py-2 flex items-center justify-between text-xs font-mono">
                           <span className="truncate">{f.path}</span>
                           <span className="text-muted-foreground ml-3 shrink-0">{f.size}B · {f.sha256.slice(0,8)}</span>
