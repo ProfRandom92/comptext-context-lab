@@ -14,7 +14,145 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      context_packs: {
+        Row: {
+          created_at: string
+          file_count: number
+          gate_reason: string | null
+          gate_status: string
+          id: string
+          pack_json: Json
+          ref: string
+          repo_url: string
+          sha256: string
+          task: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          file_count?: number
+          gate_reason?: string | null
+          gate_status: string
+          id?: string
+          pack_json: Json
+          ref?: string
+          repo_url: string
+          sha256: string
+          task: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          file_count?: number
+          gate_reason?: string | null
+          gate_status?: string
+          id?: string
+          pack_json?: Json
+          ref?: string
+          repo_url?: string
+          sha256?: string
+          task?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      proposals: {
+        Row: {
+          created_at: string
+          error: string | null
+          id: string
+          model: string
+          pack_id: string
+          provider: string
+          response_json: Json | null
+          user_id: string
+          valid: boolean
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          id?: string
+          model: string
+          pack_id: string
+          provider: string
+          response_json?: Json | null
+          user_id: string
+          valid?: boolean
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          id?: string
+          model?: string
+          pack_id?: string
+          provider?: string
+          response_json?: Json | null
+          user_id?: string
+          valid?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proposals_pack_id_fkey"
+            columns: ["pack_id"]
+            isOneToOne: false
+            referencedRelation: "context_packs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reviews: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          proposal_id: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          proposal_id: string
+          status: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          proposal_id?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reviews_proposal_id_fkey"
+            columns: ["proposal_id"]
+            isOneToOne: false
+            referencedRelation: "proposals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
