@@ -6,6 +6,7 @@ import { AppShell, GateBadge } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PipelineStatus } from "@/components/PipelineStatus";
 import { getPack } from "@/lib/pack.functions";
 import { askProvider } from "@/lib/proposal.functions";
 import { toast } from "sonner";
