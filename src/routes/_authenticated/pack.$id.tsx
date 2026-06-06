@@ -81,6 +81,26 @@ function PackPage() {
           </Card>
         )}
 
+        <div className="mt-6">
+          <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-3">
+            pipeline status · this run
+          </p>
+          <PipelineStatus
+            snapshot={{
+              packExists: true,
+              packSha: pack.sha256,
+              fileCount: pack.file_count,
+              gateStatus: pack.gate_status,
+              gateReason: pack.gate_reason,
+              proposalCount: proposals.length,
+              latestProposal: proposals[0]
+                ? { valid: proposals[0].valid, provider: proposals[0].provider, error: proposals[0].error }
+                : null,
+              latestReview: data.latestReview,
+            }}
+          />
+        </div>
+
         <div className="mt-6 grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <Tabs defaultValue="files">
