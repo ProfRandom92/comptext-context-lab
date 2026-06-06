@@ -1,14 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Terminal, FileJson, ShieldCheck, Bot, FileCheck2, Archive, ArrowRight, Github } from "lucide-react";
+import { BrandIcon, BrandLogo } from "@/components/BrandLogo";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "CompText Web — The Operating System for Context" },
+      { title: "Comptext — The Operating System for Context" },
       { name: "description", content: "Turn a GitHub repo into a deterministic Context Pack, run it through a policy gate, then a proposal-gated AI workflow — all in the browser." },
-      { property: "og:title", content: "CompText Web" },
-      { property: "og:description", content: "Deterministic context packs and proposal-gated AI workflows." },
+      { property: "og:title", content: "Comptext — The Operating System for Context" },
+      { property: "og:description", content: "Deterministic. Portable. Verifiable. Models are providers — context is the product." },
     ],
   }),
   component: Landing,
@@ -21,9 +22,9 @@ function Landing() {
       <header className="border-b border-border/60 bg-background/80 backdrop-blur sticky top-0 z-30">
         <div className="mx-auto max-w-6xl px-4 h-14 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
-            <Terminal className="size-4 text-primary" />
-            <span className="font-mono text-sm font-bold">comptext</span>
-            <span className="text-xs text-muted-foreground font-mono">/web</span>
+            <BrandIcon className="size-7" />
+            <span className="font-mono text-sm font-bold tracking-[0.18em]">COMPTEXT</span>
+            <span className="text-xs text-muted-foreground font-mono hidden sm:inline">/web</span>
           </Link>
           <nav className="flex items-center gap-2 text-sm font-mono">
             <Link to="/about" className="px-3 py-1.5 text-muted-foreground hover:text-foreground transition-colors">about</Link>
@@ -45,12 +46,15 @@ function Landing() {
       {/* Hero */}
       <section className="relative overflow-hidden border-b border-border/60">
         <div className="absolute inset-0 bg-grid opacity-30 [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]" />
-        <div className="relative mx-auto max-w-6xl px-4 py-24 sm:py-32 text-center">
+        <div className="relative mx-auto max-w-6xl px-4 py-20 sm:py-28 text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-xs font-mono text-muted-foreground mb-8">
             <span className="size-1.5 rounded-full bg-primary animate-pulse" />
             web adaptation of comptext-cli · phase 1
           </div>
-          <h1 className="text-5xl sm:text-7xl font-bold tracking-tight">
+          <div className="flex justify-center mb-6">
+            <BrandLogo className="h-20 sm:h-28" />
+          </div>
+          <h1 className="text-4xl sm:text-6xl font-bold tracking-tight">
             The Operating System
             <br />
             <span className="text-primary">for Context.</span>
@@ -59,8 +63,8 @@ function Landing() {
             Turn a messy repository into a deterministic Context Pack. Pass it through an explicit
             policy gate. Treat model output as untrusted. Review proposals before anything moves.
           </p>
-          <p className="mt-4 font-mono text-sm text-muted-foreground">
-            Models are providers. <span className="text-foreground">Context is the product.</span>
+          <p className="mt-4 font-mono text-xs uppercase tracking-[0.32em] text-muted-foreground">
+            Deterministic · Portable · Verifiable
           </p>
           <div className="mt-10 flex flex-wrap justify-center gap-3">
             <Link to="/auth">
