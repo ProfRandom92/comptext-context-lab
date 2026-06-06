@@ -2,6 +2,7 @@ import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell, GateBadge } from "@/components/AppShell";
+import { PipelineStatus } from "@/components/PipelineStatus";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { listPacks } from "@/lib/pack.functions";
@@ -60,6 +61,21 @@ function Workspace() {
                       <span>{new Date(p.created_at).toLocaleString()}</span>
                     </div>
                     <p className="mt-2 font-mono text-[10px] text-muted-foreground truncate">sha256:{p.sha256.slice(0, 24)}…</p>
+                    <div className="mt-3 pt-3 border-t border-border/60">
+                      <PipelineStatus
+                        compact
+                        snapshot={{
+                          packExists: true,
+                          packSha: p.sha256,
+                          fileCount: p.file_count,
+                          gateStatus: p.gate_status,
+                          gateReason: null,
+                          proposalCount: 0,
+                          latestProposal: null,
+                          latestReview: null,
+                        }}
+                      />
+                    </div>
                   </CardContent>
                 </Card>
               </Link>

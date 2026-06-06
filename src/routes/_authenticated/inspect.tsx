@@ -8,11 +8,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { inspectRepo } from "@/lib/pack.functions";
+import { RepoInspector } from "@/components/RepoInspector";
 import { toast } from "sonner";
 import { Loader2, Terminal } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/inspect")({
-  head: () => ({ meta: [{ title: "Inspect — CompText Web" }] }),
+  head: () => ({ meta: [{ title: "Inspect — Comptext" }] }),
   component: Inspect,
 });
 
@@ -40,18 +41,20 @@ function Inspect() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-3xl px-4 py-10">
-        <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">~/inspect</p>
-        <h1 className="mt-1 text-3xl font-bold">New context pack</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Point at a public GitHub repo. We pull the tree, apply the default policy, scan for secret-like
-          patterns, then hash the result.
-        </p>
+      <div className="mx-auto max-w-3xl px-4 py-10 space-y-6">
+        <div>
+          <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">~/inspect</p>
+          <h1 className="mt-1 text-3xl font-bold">New context pack</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Point at a public GitHub repo. Run the inspector to preview detected files, then build the
+            deterministic pack.
+          </p>
+        </div>
 
-        <Card className="mt-8">
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-mono text-base">
-              <Terminal className="size-4 text-primary" /> ctxt context pack
+              <Terminal className="size-4 text-primary" /> ctxt source
             </CardTitle>
             <CardDescription>Default policy applies (allow code/docs, deny binaries/secrets, ≤ 64 KB, ≤ 60 files).</CardDescription>
           </CardHeader>
@@ -81,6 +84,8 @@ function Inspect() {
             </form>
           </CardContent>
         </Card>
+
+        <RepoInspector repoUrl={repoUrl} ref={ref} />
       </div>
     </AppShell>
   );

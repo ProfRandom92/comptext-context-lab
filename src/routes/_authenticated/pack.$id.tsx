@@ -6,6 +6,7 @@ import { AppShell, GateBadge } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PipelineStatus } from "@/components/PipelineStatus";
 import { getPack } from "@/lib/pack.functions";
 import { askProvider } from "@/lib/proposal.functions";
 import { toast } from "sonner";
@@ -79,6 +80,26 @@ function PackPage() {
             </CardContent>
           </Card>
         )}
+
+        <div className="mt-6">
+          <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-3">
+            pipeline status · this run
+          </p>
+          <PipelineStatus
+            snapshot={{
+              packExists: true,
+              packSha: pack.sha256,
+              fileCount: pack.file_count,
+              gateStatus: pack.gate_status,
+              gateReason: pack.gate_reason,
+              proposalCount: proposals.length,
+              latestProposal: proposals[0]
+                ? { valid: proposals[0].valid, provider: proposals[0].provider, error: proposals[0].error }
+                : null,
+              latestReview: data.latestReview,
+            }}
+          />
+        </div>
 
         <div className="mt-6 grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
