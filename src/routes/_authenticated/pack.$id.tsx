@@ -6,11 +6,11 @@ import { AppShell, GateBadge } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { PipelineStatus } from "@/components/PipelineStatus";
-import { getPack } from "@/lib/pack.functions";
+import { PipelineStatus, deriveStages, type RunSnapshot } from "@/components/PipelineStatus";
+import { getPack, inspectRepo } from "@/lib/pack.functions";
 import { askProvider } from "@/lib/proposal.functions";
 import { toast } from "sonner";
-import { Loader2, Bot, FileJson, Copy, Download } from "lucide-react";
+import { Loader2, Bot, FileJson, Copy, Download, RotateCcw } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/pack/$id")({
   head: () => ({ meta: [{ title: "Pack — CompText Web" }] }),
@@ -23,12 +23,14 @@ function PackPage() {
   const { id } = Route.useParams();
   const fn = useServerFn(getPack);
   const ask = useServerFn(askProvider);
+  const reinspect = useServerFn(inspectRepo);
   const router = useRouter();
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["pack", id],
     queryFn: () => fn({ data: { id } }),
   });
   const [busyProvider, setBusyProvider] = useState<string | null>(null);
+  const [resuming, setResuming] = useState(false);
 
   if (isLoading) return <AppShell><p className="p-6 font-mono text-sm text-muted-foreground">loading…</p></AppShell>;
   if (!data) return null;
