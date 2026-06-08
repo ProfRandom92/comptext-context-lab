@@ -53,7 +53,7 @@ export const askProvider = createServerFn({ method: "POST" })
       .select("id, repo_url, ref, task, gate_status, pack_json")
       .eq("id", data.packId)
       .maybeSingle<PackRow>();
-    if (pErr) throw new Error(pErr.message);
+    if (pErr) { console.error("[db:load pack for proposal]", pErr.message); throw new Error("A database error occurred. Please try again."); }
     if (!pack) throw new Error("Pack not found");
     if (pack.gate_status !== "pass") throw new Error("Policy gate did not pass");
 
