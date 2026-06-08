@@ -183,6 +183,7 @@ export type RepoPreview = {
   commitSha: string;
   totals: { totalFiles: number; eligibleFiles: number; eligibleBytes: number };
   buckets: Record<RepoFileKind, number>;
+  ineligibleByKind: Record<RepoFileKind, number>;
   detected: {
     isRust: boolean;
     hasCli: boolean;
@@ -194,6 +195,7 @@ export type RepoPreview = {
   topFiles: { path: string; kind: RepoFileKind; size: number }[];
   truncated: boolean;
 };
+
 
 function classify(path: string): RepoFileKind {
   const p = path.toLowerCase();
@@ -234,6 +236,10 @@ export const previewRepo = createServerFn({ method: "POST" })
       manifest: 0, rustSource: 0, doc: 0, config: 0, test: 0,
       example: 0, comptextConfig: 0, ci: 0, other: 0,
     };
+    const ineligibleByKind: Record<RepoFileKind, number> = {
+      manifest: 0, rustSource: 0, doc: 0, config: 0, test: 0,
+      example: 0, comptextConfig: 0, ci: 0, other: 0,
+    };
     let eligibleFiles = 0;
     let eligibleBytes = 0;
     const enriched = blobs.map((e) => {
@@ -243,11 +249,12 @@ export const previewRepo = createServerFn({ method: "POST" })
       if (inc) {
         eligibleFiles += 1;
         eligibleBytes += e.size ?? 0;
+      } else {
+        ineligibleByKind[kind] += 1;
       }
       return { path: e.path, kind, size: e.size ?? 0, eligible: inc };
     });
 
-    // Priority for "top files" view: manifest > comptextConfig > rustSource > doc > config > test > example > ci > other
     const order: Record<RepoFileKind, number> = {
       manifest: 0, comptextConfig: 1, rustSource: 2, doc: 3, config: 4, test: 5, example: 6, ci: 7, other: 8,
     };
@@ -269,6 +276,7 @@ export const previewRepo = createServerFn({ method: "POST" })
     return {
       owner, repo, ref: data.ref, commitSha: branch.commit.sha,
       totals: { totalFiles: blobs.length, eligibleFiles, eligibleBytes },
-      buckets, detected, topFiles, truncated: tree.truncated,
+      buckets, ineligibleByKind, detected, topFiles, truncated: tree.truncated,
     } satisfies RepoPreview;
   });
+
