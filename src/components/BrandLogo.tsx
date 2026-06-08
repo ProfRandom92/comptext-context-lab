@@ -27,11 +27,9 @@ export function BrandLogo({
   tone = "auto",
 }: Props & { tone?: "auto" | "dark" | "light" }) {
   const invert =
-    tone === "light"
-      ? "invert"
-      : tone === "auto"
-        ? "dark:invert"
-        : "";
+    tone === "dark"
+      ? ""
+      : "invert";
   return (
     <img
       src={wordmarkAsset.url}
