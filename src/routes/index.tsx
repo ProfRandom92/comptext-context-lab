@@ -21,9 +21,9 @@ function Landing() {
       {/* Top bar */}
       <header className="border-b border-border/60 bg-background/80 backdrop-blur sticky top-0 z-30">
         <div className="mx-auto max-w-6xl px-4 h-14 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2">
+          <Link to="/" className="flex items-center gap-2.5">
             <BrandIcon className="size-7" />
-            <span className="font-mono text-sm font-bold tracking-[0.18em]">COMPTEXT</span>
+            <BrandLogo className="h-3.5" alt="Comptext" />
             <span className="text-xs text-muted-foreground font-mono hidden sm:inline">/web</span>
           </Link>
           <nav className="flex items-center gap-2 text-sm font-mono">
