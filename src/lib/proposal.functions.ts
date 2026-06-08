@@ -79,7 +79,7 @@ export const askProvider = createServerFn({ method: "POST" })
         })
         .select("id")
         .single();
-      if (error) throw new Error(error.message);
+      if (error) { console.error("[db:insert dummy proposal]", error.message); throw new Error("A database error occurred. Please try again."); }
       return { proposalId: row.id as string };
     }
 
@@ -169,7 +169,7 @@ export const askProvider = createServerFn({ method: "POST" })
       })
       .select("id")
       .single();
-    if (error) throw new Error(error.message);
+    if (error) { console.error("[db:insert proposal]", error.message); throw new Error("A database error occurred. Please try again."); }
     return { proposalId: row.id as string };
   });
 
@@ -182,7 +182,7 @@ export const getProposal = createServerFn({ method: "POST" })
       .select("*")
       .eq("id", data.id)
       .maybeSingle();
-    if (error) throw new Error(error.message);
+    if (error) { console.error("[db:load proposal]", error.message); throw new Error("A database error occurred. Please try again."); }
     if (!proposal) throw new Error("Proposal not found");
 
     const { data: review } = await context.supabase
@@ -212,7 +212,7 @@ export const submitReview = createServerFn({ method: "POST" })
       status: data.status,
       notes: data.notes ?? null,
     });
-    if (error) throw new Error(error.message);
+    if (error) { console.error("[db:insert review]", error.message); throw new Error("A database error occurred. Please try again."); }
     return { ok: true };
   });
 

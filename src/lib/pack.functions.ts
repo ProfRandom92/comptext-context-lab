@@ -120,7 +120,7 @@ export const inspectRepo = createServerFn({ method: "POST" })
       })
       .select("id")
       .single();
-    if (error) throw new Error(error.message);
+    if (error) { console.error("[db:insert context_pack]", error.message); throw new Error("A database error occurred. Please try again."); }
     return { packId: row.id as string };
   });
 
@@ -132,7 +132,7 @@ export const listPacks = createServerFn({ method: "GET" })
       .select("id, repo_url, ref, task, sha256, gate_status, file_count, created_at")
       .order("created_at", { ascending: false })
       .limit(100);
-    if (error) throw new Error(error.message);
+    if (error) { console.error("[db:list packs]", error.message); throw new Error("A database error occurred. Please try again."); }
     return { packs: data ?? [] };
   });
 
@@ -145,7 +145,7 @@ export const getPack = createServerFn({ method: "POST" })
       .select("*")
       .eq("id", data.id)
       .maybeSingle();
-    if (error) throw new Error(error.message);
+    if (error) { console.error("[db:load pack]", error.message); throw new Error("A database error occurred. Please try again."); }
     if (!pack) throw new Error("Pack not found");
 
     const { data: proposals } = await context.supabase
