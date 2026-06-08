@@ -1,22 +1,56 @@
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { previewRepo, type RepoPreview } from "@/lib/pack.functions";
+import { previewRepo, type RepoPreview, type RepoFileKind } from "@/lib/pack.functions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, FileCode2, FileText, Settings2, Beaker, Hammer, Workflow, Package, AlertTriangle, CheckCircle2 } from "lucide-react";
+import {
+  Loader2, Search, FileCode2, FileText, Settings2, Beaker, Hammer,
+  Workflow, Package, AlertTriangle, CheckCircle2, XCircle, MinusCircle,
+} from "lucide-react";
 
-const KIND_META: Record<string, { label: string; icon: typeof FileCode2; tone: string }> = {
-  manifest:        { label: "Manifest",       icon: Package,      tone: "text-primary" },
-  rustSource:      { label: "Rust source",    icon: FileCode2,    tone: "text-primary" },
-  doc:             { label: "Docs",           icon: FileText,     tone: "text-muted-foreground" },
-  config:          { label: "Config",         icon: Settings2,    tone: "text-muted-foreground" },
-  test:            { label: "Tests",          icon: Beaker,       tone: "text-warn" },
-  example:         { label: "Examples",       icon: Hammer,       tone: "text-muted-foreground" },
-  comptextConfig:  { label: "Comptext cfg",   icon: Workflow,     tone: "text-pass" },
-  ci:              { label: "CI",             icon: Workflow,     tone: "text-muted-foreground" },
-  other:           { label: "Other",          icon: FileText,     tone: "text-muted-foreground" },
+type Meta = {
+  label: string;
+  icon: typeof FileCode2;
+  tone: string;
+  /** required → next gate fails without it; recommended → gate passes but proposal quality degrades; optional → informational */
+  requirement: "required" | "recommended" | "optional";
+  /** Plain-language hint shown next to the bucket */
+  hint: string;
 };
+
+const KIND_META: Record<RepoFileKind, Meta> = {
+  manifest:       { label: "Manifest",      icon: Package,    tone: "text-primary",          requirement: "required",    hint: "Cargo.toml / package.json — required so the gate can resolve the build target." },
+  rustSource:     { label: "Rust source",   icon: FileCode2,  tone: "text-primary",          requirement: "recommended", hint: "*.rs files. Needed for any Rust change-proposal; without them the provider only sees docs." },
+  comptextConfig: { label: "Comptext cfg",  icon: Workflow,   tone: "text-pass",             requirement: "recommended", hint: ".comptext/ or comptext.toml. Lets the gate honour project-level policy overrides." },
+  doc:            { label: "Docs",          icon: FileText,   tone: "text-muted-foreground", requirement: "recommended", hint: "README / docs/. Strongly improves proposal grounding." },
+  ci:             { label: "CI",            icon: Workflow,   tone: "text-muted-foreground", requirement: "optional",    hint: ".github/workflows. Helps the proposal stay green on CI." },
+  test:           { label: "Tests",         icon: Beaker,     tone: "text-warn",             requirement: "optional",    hint: "Test files. Used as behavioural ground truth for the proposal." },
+  config:         { label: "Config",        icon: Settings2,  tone: "text-muted-foreground", requirement: "optional",    hint: "Lint / format / runtime config. Passed verbatim to the provider." },
+  example:        { label: "Examples",      icon: Hammer,     tone: "text-muted-foreground", requirement: "optional",    hint: "examples/. Useful for API surface, not gating." },
+  other:          { label: "Other",         icon: FileText,   tone: "text-muted-foreground", requirement: "optional",    hint: "Anything unclassified. Filtered by allow-list before the pack stage." },
+};
+
+const KIND_ORDER: RepoFileKind[] = ["manifest", "comptextConfig", "rustSource", "doc", "ci", "test", "config", "example", "other"];
+
+function bucketStatus(kind: RepoFileKind, count: number, ineligible: number, meta: Meta) {
+  if (count === 0 && meta.requirement === "required") {
+    return { tone: "border-blocked/40 bg-blocked/5", icon: XCircle, iconTone: "text-blocked", label: "missing — gate will block" };
+  }
+  if (count === 0 && meta.requirement === "recommended") {
+    return { tone: "border-warn/40 bg-warn/5", icon: AlertTriangle, iconTone: "text-warn", label: "missing — recommended" };
+  }
+  if (count > 0 && ineligible > 0 && count - ineligible === 0) {
+    return { tone: "border-blocked/40 bg-blocked/5", icon: XCircle, iconTone: "text-blocked", label: `all ${ineligible} files filtered (size/deny)` };
+  }
+  if (count > 0 && ineligible > 0) {
+    return { tone: "border-warn/40 bg-warn/5", icon: AlertTriangle, iconTone: "text-warn", label: `${ineligible} filtered (size/deny)` };
+  }
+  if (count === 0) {
+    return { tone: "border-border", icon: MinusCircle, iconTone: "text-muted-foreground", label: "none — optional" };
+  }
+  return { tone: "border-pass/40 bg-pass/5", icon: CheckCircle2, iconTone: "text-pass", label: "ready" };
+}
 
 export function RepoInspector({ repoUrl, ref }: { repoUrl: string; ref: string }) {
   const fn = useServerFn(previewRepo);
@@ -46,7 +80,7 @@ export function RepoInspector({ repoUrl, ref }: { repoUrl: string; ref: string }
               <Search className="size-4 text-primary" /> repo inspector
             </CardTitle>
             <CardDescription>
-              Auto-detect comptext-relevant files (manifests, sources, docs, configs) before sending to the Policy Gate.
+              Auto-detect comptext-relevant files and flag what the Policy Gate needs next.
             </CardDescription>
           </div>
           <Button onClick={run} disabled={busy || !repoUrl} variant="outline" className="font-mono gap-2">
@@ -78,20 +112,43 @@ export function RepoInspector({ repoUrl, ref }: { repoUrl: string; ref: string }
               )}
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {Object.entries(data.buckets).map(([k, count]) => {
-                const meta = KIND_META[k] ?? KIND_META.other;
-                const Icon = meta.icon;
-                return (
-                  <div key={k} className="rounded-md border border-border bg-card/40 px-3 py-2 flex items-center justify-between">
-                    <span className="inline-flex items-center gap-2 font-mono text-xs">
-                      <Icon className={`size-3.5 ${meta.tone}`} />
-                      {meta.label}
-                    </span>
-                    <span className="font-mono text-xs tabular-nums">{count}</span>
-                  </div>
-                );
-              })}
+            <div className="space-y-2">
+              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                gate inputs · per bucket
+              </p>
+              <ul className="space-y-1.5">
+                {KIND_ORDER.map((k) => {
+                  const meta = KIND_META[k];
+                  const count = data.buckets[k];
+                  const ineligible = data.ineligibleByKind[k];
+                  const status = bucketStatus(k, count, ineligible, meta);
+                  const StatusIcon = status.icon;
+                  const KindIcon = meta.icon;
+                  return (
+                    <li key={k} className={`rounded-md border ${status.tone} px-3 py-2`}>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="inline-flex items-center gap-2 font-mono text-xs min-w-0">
+                          <KindIcon className={`size-3.5 shrink-0 ${meta.tone}`} />
+                          <span className="truncate">{meta.label}</span>
+                          <span className="text-[9px] uppercase tracking-widest text-muted-foreground border border-border rounded px-1 py-px">
+                            {meta.requirement}
+                          </span>
+                        </span>
+                        <span className="inline-flex items-center gap-2 font-mono text-[11px] shrink-0">
+                          <span className="tabular-nums text-muted-foreground">
+                            {count - ineligible}/{count}
+                          </span>
+                          <StatusIcon className={`size-3.5 ${status.iconTone}`} />
+                          <span className={status.iconTone}>{status.label}</span>
+                        </span>
+                      </div>
+                      <p className="mt-1 font-mono text-[10px] text-muted-foreground leading-snug">
+                        {meta.hint}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
 
             <div className="rounded-md border border-border">
@@ -101,7 +158,7 @@ export function RepoInspector({ repoUrl, ref }: { repoUrl: string; ref: string }
               </div>
               <ul className="divide-y divide-border max-h-64 overflow-auto">
                 {data.topFiles.map((f) => {
-                  const meta = KIND_META[f.kind] ?? KIND_META.other;
+                  const meta = KIND_META[f.kind];
                   const Icon = meta.icon;
                   return (
                     <li key={f.path} className="px-3 py-1.5 flex items-center justify-between text-xs font-mono">

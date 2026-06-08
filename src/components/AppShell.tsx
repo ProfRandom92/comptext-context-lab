@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import { type ReactNode } from "react";
-import { BrandIcon } from "@/components/BrandLogo";
+import { BrandIcon, BrandLogo } from "@/components/BrandLogo";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -15,9 +15,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-border/60 bg-card/40 backdrop-blur sticky top-0 z-30">
         <div className="mx-auto max-w-6xl px-4 h-14 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2 group">
+          <Link to="/" className="flex items-center gap-2.5 group">
             <BrandIcon className="size-7 transition-transform group-hover:scale-105" />
-            <span className="font-mono text-sm font-bold tracking-[0.18em]">COMPTEXT</span>
+            <BrandLogo className="h-3.5" alt="Comptext" />
             <span className="text-xs text-muted-foreground font-mono hidden sm:inline">/web</span>
           </Link>
           <nav className="flex items-center gap-1 text-sm font-mono">

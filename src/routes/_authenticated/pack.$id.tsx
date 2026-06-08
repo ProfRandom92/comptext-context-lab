@@ -6,11 +6,11 @@ import { AppShell, GateBadge } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { PipelineStatus } from "@/components/PipelineStatus";
-import { getPack } from "@/lib/pack.functions";
+import { PipelineStatus, deriveStages, type RunSnapshot } from "@/components/PipelineStatus";
+import { getPack, inspectRepo } from "@/lib/pack.functions";
 import { askProvider } from "@/lib/proposal.functions";
 import { toast } from "sonner";
-import { Loader2, Bot, FileJson, Copy, Download } from "lucide-react";
+import { Loader2, Bot, FileJson, Copy, Download, RotateCcw } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/pack/$id")({
   head: () => ({ meta: [{ title: "Pack — CompText Web" }] }),
@@ -23,12 +23,14 @@ function PackPage() {
   const { id } = Route.useParams();
   const fn = useServerFn(getPack);
   const ask = useServerFn(askProvider);
+  const reinspect = useServerFn(inspectRepo);
   const router = useRouter();
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["pack", id],
     queryFn: () => fn({ data: { id } }),
   });
   const [busyProvider, setBusyProvider] = useState<string | null>(null);
+  const [resuming, setResuming] = useState(false);
 
   if (isLoading) return <AppShell><p className="p-6 font-mono text-sm text-muted-foreground">loading…</p></AppShell>;
   if (!data) return null;
@@ -81,25 +83,85 @@ function PackPage() {
           </Card>
         )}
 
-        <div className="mt-6">
-          <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-3">
-            pipeline status · this run
-          </p>
-          <PipelineStatus
-            snapshot={{
-              packExists: true,
-              packSha: pack.sha256,
-              fileCount: pack.file_count,
-              gateStatus: pack.gate_status,
-              gateReason: pack.gate_reason,
-              proposalCount: proposals.length,
-              latestProposal: proposals[0]
-                ? { valid: proposals[0].valid, provider: proposals[0].provider, error: proposals[0].error }
-                : null,
-              latestReview: data.latestReview,
-            }}
-          />
-        </div>
+        {(() => {
+          const snapshot: RunSnapshot = {
+            packExists: true,
+            packSha: pack.sha256,
+            fileCount: pack.file_count,
+            gateStatus: pack.gate_status,
+            gateReason: pack.gate_reason,
+            proposalCount: proposals.length,
+            latestProposal: proposals[0]
+              ? { valid: proposals[0].valid, provider: proposals[0].provider, error: proposals[0].error }
+              : null,
+            latestReview: data.latestReview,
+          };
+          const stages = deriveStages(snapshot);
+          const blockedStage = stages.find((s) => s.state === "blocked");
+          const nextPending = stages.find((s) => s.state === "pending" || s.state === "running");
+          const resumeTarget = blockedStage ?? nextPending ?? null;
+
+          const runResume = async () => {
+            if (!resumeTarget) return;
+            setResuming(true);
+            try {
+              if (resumeTarget.key === "inspect" || resumeTarget.key === "pack" || resumeTarget.key === "gate") {
+                const res = await reinspect({
+                  data: { repoUrl: pack.repo_url, ref: pack.ref, task: pack.task },
+                });
+                toast.success("Re-inspected — new pack created");
+                router.navigate({ to: "/pack/$id", params: { id: res.packId } });
+                return;
+              }
+              if (resumeTarget.key === "provider" || resumeTarget.key === "proposal") {
+                const res = await ask({ data: { packId: id, provider: "lovable-ai" } });
+                toast.success("Provider re-run complete");
+                router.navigate({ to: "/proposal/$id", params: { id: res.proposalId } });
+                return;
+              }
+              if (resumeTarget.key === "review" && proposals[0]) {
+                router.navigate({ to: "/proposal/$id", params: { id: proposals[0].id } });
+                return;
+              }
+            } catch (e) {
+              toast.error((e as Error).message);
+            } finally {
+              setResuming(false);
+              refetch();
+            }
+          };
+
+          const resumeLabel = !resumeTarget
+            ? "run complete"
+            : resumeTarget.key === "inspect" || resumeTarget.key === "pack" || resumeTarget.key === "gate"
+              ? `re-inspect → rebuild pack (${resumeTarget.label})`
+              : resumeTarget.key === "provider" || resumeTarget.key === "proposal"
+                ? `re-run provider (${resumeTarget.label})`
+                : `open ${resumeTarget.label.toLowerCase()}`;
+
+          return (
+            <div className="mt-6">
+              <div className="mb-3 flex items-end justify-between gap-3 flex-wrap">
+                <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  pipeline status · this run
+                </p>
+                <Button
+                  size="sm"
+                  variant={blockedStage ? "default" : "outline"}
+                  disabled={resuming || !resumeTarget}
+                  onClick={runResume}
+                  className="font-mono gap-2"
+                  title={resumeTarget ? `Resumes from stage: ${resumeTarget.label}. Reuses ${pack.repo_url}@${pack.ref} + task.` : "Nothing to resume"}
+                >
+                  {resuming ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}
+                  {resuming ? "resuming…" : resumeLabel}
+                </Button>
+              </div>
+              <PipelineStatus snapshot={snapshot} />
+            </div>
+          );
+        })()}
+
 
         <div className="mt-6 grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
