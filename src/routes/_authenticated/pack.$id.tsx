@@ -35,9 +35,16 @@ function PackPage() {
   if (isLoading) return <AppShell><p className="p-6 font-mono text-sm text-muted-foreground">loading…</p></AppShell>;
   if (!data) return null;
   const { pack, proposals } = data;
-  const packJsonObj = (pack.pack_json ?? {}) as { files?: { path: string; size: number; sha256: string }[] };
+  const packJsonObj = (pack.pack_json ?? {}) as {
+    files?: { path: string; size: number; sha256: string }[];
+    evidence?: {
+      mode?: string;
+      replay_sidecar?: { expected?: boolean; detected_paths?: string[] };
+    };
+  };
   const packJson = JSON.stringify(pack.pack_json, null, 2);
   const files = packJsonObj.files ?? [];
+  const evidence = packJsonObj.evidence;
 
   const runProvider = async (provider: "lovable-ai" | "dummy") => {
     setBusyProvider(provider);
@@ -95,6 +102,13 @@ function PackPage() {
               ? { valid: proposals[0].valid, provider: proposals[0].provider, error: proposals[0].error }
               : null,
             latestReview: data.latestReview,
+            replaySidecar: evidence?.replay_sidecar
+              ? {
+                  expected: !!evidence.replay_sidecar.expected,
+                  detected: (evidence.replay_sidecar.detected_paths ?? []).length > 0,
+                  pathCount: (evidence.replay_sidecar.detected_paths ?? []).length,
+                }
+              : null,
           };
           const stages = deriveStages(snapshot);
           const blockedStage = stages.find((s) => s.state === "blocked");
@@ -105,9 +119,14 @@ function PackPage() {
             if (!resumeTarget) return;
             setResuming(true);
             try {
-              if (resumeTarget.key === "inspect" || resumeTarget.key === "pack" || resumeTarget.key === "gate") {
+              if (resumeTarget.key === "inspect" || resumeTarget.key === "pack" || resumeTarget.key === "gate" || resumeTarget.key === "replay") {
                 const res = await reinspect({
-                  data: { repoUrl: pack.repo_url, ref: pack.ref, task: pack.task },
+                  data: {
+                    repoUrl: pack.repo_url,
+                    ref: pack.ref,
+                    task: pack.task,
+                    mode: (evidence?.mode as "cli-audit" | "spark-evidence" | "replay-drift" | "custom") ?? "custom",
+                  },
                 });
                 toast.success("Re-inspected — new pack created");
                 router.navigate({ to: "/pack/$id", params: { id: res.packId } });
@@ -123,6 +142,10 @@ function PackPage() {
                 router.navigate({ to: "/proposal/$id", params: { id: proposals[0].id } });
                 return;
               }
+              if (resumeTarget.key === "export") {
+                download();
+                return;
+              }
             } catch (e) {
               toast.error((e as Error).message);
             } finally {
@@ -133,11 +156,13 @@ function PackPage() {
 
           const resumeLabel = !resumeTarget
             ? "run complete"
-            : resumeTarget.key === "inspect" || resumeTarget.key === "pack" || resumeTarget.key === "gate"
+            : resumeTarget.key === "inspect" || resumeTarget.key === "pack" || resumeTarget.key === "gate" || resumeTarget.key === "replay"
               ? `re-inspect → rebuild pack (${resumeTarget.label})`
               : resumeTarget.key === "provider" || resumeTarget.key === "proposal"
                 ? `re-run provider (${resumeTarget.label})`
-                : `open ${resumeTarget.label.toLowerCase()}`;
+                : resumeTarget.key === "export"
+                  ? "export evidence json"
+                  : `open ${resumeTarget.label.toLowerCase()}`;
 
           return (
             <div className="mt-6">

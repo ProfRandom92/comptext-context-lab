@@ -1,10 +1,33 @@
-import { Terminal, FileJson, ShieldCheck, Bot, FileCheck2, ClipboardCheck, Check, X, Loader2, Minus } from "lucide-react";
+import {
+  Terminal,
+  FileJson,
+  Layers,
+  ShieldCheck,
+  Bot,
+  FileCheck2,
+  ClipboardCheck,
+  Archive,
+  Check,
+  X,
+  Loader2,
+  Minus,
+} from "lucide-react";
 import { type ComponentType } from "react";
 
 export type StageState = "done" | "pending" | "blocked" | "skipped" | "running";
 
+export type StageKey =
+  | "inspect"
+  | "pack"
+  | "replay"
+  | "gate"
+  | "provider"
+  | "proposal"
+  | "review"
+  | "export";
+
 export type RunStage = {
-  key: "inspect" | "pack" | "gate" | "provider" | "proposal" | "review";
+  key: StageKey;
   label: string;
   state: StageState;
   detail?: string;
@@ -20,10 +43,11 @@ export type RunSnapshot = {
   proposalCount: number;
   latestProposal?: { valid: boolean; provider: string; error?: string | null } | null;
   latestReview?: { status: string; notes?: string | null } | null;
+  // Optional evidence signals from pack_json.evidence
+  replaySidecar?: { expected: boolean; detected: boolean; pathCount?: number } | null;
 };
 
 export function deriveStages(s: RunSnapshot): RunStage[] {
-  // 1. Inspect
   const inspect: RunStage = {
     key: "inspect",
     label: "Inspect",
@@ -31,7 +55,6 @@ export function deriveStages(s: RunSnapshot): RunStage[] {
     state: s.packExists ? "done" : "pending",
     detail: s.packExists ? "tree fetched" : "awaiting repo",
   };
-  // 2. Pack
   const pack: RunStage = {
     key: "pack",
     label: "Context Pack",
@@ -39,7 +62,22 @@ export function deriveStages(s: RunSnapshot): RunStage[] {
     state: s.packSha ? "done" : s.packExists ? "running" : "pending",
     detail: s.packSha ? `${s.fileCount ?? 0} files · ${s.packSha.slice(0, 8)}` : "hashing…",
   };
-  // 3. Policy Gate
+  const replay: RunStage = (() => {
+    if (!s.packExists) return { key: "replay", label: "Replay Sidecar", icon: Layers, state: "pending", detail: "awaiting pack" };
+    if (!s.replaySidecar || !s.replaySidecar.expected) {
+      return { key: "replay", label: "Replay Sidecar", icon: Layers, state: "skipped", detail: "not expected for this mode" };
+    }
+    if (s.replaySidecar.detected) {
+      return {
+        key: "replay",
+        label: "Replay Sidecar",
+        icon: Layers,
+        state: "done",
+        detail: `${s.replaySidecar.pathCount ?? 0} sidecar paths detected`,
+      };
+    }
+    return { key: "replay", label: "Replay Sidecar", icon: Layers, state: "blocked", detail: "expected but not found" };
+  })();
   const gateState: StageState =
     s.gateStatus === "pass" ? "done" : s.gateStatus === "blocked" ? "blocked" : s.packExists ? "running" : "pending";
   const gate: RunStage = {
@@ -49,12 +87,11 @@ export function deriveStages(s: RunSnapshot): RunStage[] {
     state: gateState,
     detail: s.gateReason ?? (s.gateStatus === "pass" ? "passed" : "evaluating"),
   };
-  // 4. Provider
   const providerState: StageState =
     gateState === "blocked" ? "skipped" : s.proposalCount > 0 ? "done" : "pending";
   const provider: RunStage = {
     key: "provider",
-    label: "Provider",
+    label: "Provider Boundary",
     icon: Bot,
     state: providerState,
     detail:
@@ -64,7 +101,6 @@ export function deriveStages(s: RunSnapshot): RunStage[] {
           ? `${s.proposalCount} call${s.proposalCount === 1 ? "" : "s"}`
           : "no calls yet",
   };
-  // 5. Proposal
   const proposalState: StageState =
     providerState === "skipped"
       ? "skipped"
@@ -75,16 +111,15 @@ export function deriveStages(s: RunSnapshot): RunStage[] {
         : "pending";
   const proposal: RunStage = {
     key: "proposal",
-    label: "Proposal",
+    label: "Proposal Artifact",
     icon: FileCheck2,
     state: proposalState,
     detail: s.latestProposal
       ? s.latestProposal.valid
         ? `${s.latestProposal.provider} · valid`
-        : s.latestProposal.error?.slice(0, 40) ?? "invalid output"
+        : (s.latestProposal.error?.slice(0, 40) ?? "invalid output")
       : "awaiting model",
   };
-  // 6. Review
   const reviewState: StageState =
     proposalState === "skipped" || proposalState === "pending"
       ? proposalState
@@ -95,12 +130,26 @@ export function deriveStages(s: RunSnapshot): RunStage[] {
         : "pending";
   const review: RunStage = {
     key: "review",
-    label: "Review",
+    label: "Review Gate",
     icon: ClipboardCheck,
     state: reviewState,
     detail: s.latestReview ? `${s.latestReview.status}` : "needs your sign-off",
   };
-  return [inspect, pack, gate, provider, proposal, review];
+  const exportState: StageState =
+    reviewState === "done" ? "done" : reviewState === "blocked" ? "blocked" : reviewState === "skipped" ? "skipped" : "pending";
+  const evidenceExport: RunStage = {
+    key: "export",
+    label: "Evidence Export",
+    icon: Archive,
+    state: exportState,
+    detail:
+      exportState === "done"
+        ? "ledger ready"
+        : exportState === "blocked"
+          ? "blocked upstream"
+          : "awaiting review",
+  };
+  return [inspect, pack, replay, gate, provider, proposal, review, evidenceExport];
 }
 
 function StateGlyph({ state }: { state: StageState }) {
@@ -123,18 +172,18 @@ export function PipelineStatus({ snapshot, compact = false }: { snapshot: RunSna
   const stages = deriveStages(snapshot);
   if (compact) {
     return (
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 flex-wrap">
         {stages.map((s, i) => (
           <div key={s.key} className="flex items-center gap-1">
             <StateGlyph state={s.state} />
-            {i < stages.length - 1 && <span className="h-px w-3 bg-border" />}
+            {i < stages.length - 1 && <span className="h-px w-2 bg-border" />}
           </div>
         ))}
       </div>
     );
   }
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
       {stages.map((s, i) => {
         const Icon = s.icon;
         const tone =
@@ -146,14 +195,14 @@ export function PipelineStatus({ snapshot, compact = false }: { snapshot: RunSna
                 ? "border-primary/40"
                 : "border-border";
         return (
-          <div key={s.key} className={`relative rounded-lg border ${tone} bg-card/40 p-3`}>
+          <div key={s.key} className={`relative rounded-lg border ${tone} bg-card/40 p-2.5`}>
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">0{i + 1}</span>
               <StateGlyph state={s.state} />
             </div>
-            <div className="mt-2 flex items-center gap-2">
-              <Icon className="size-3.5 text-primary" />
-              <span className="font-mono text-xs font-semibold">{s.label}</span>
+            <div className="mt-2 flex items-center gap-1.5">
+              <Icon className="size-3.5 text-primary shrink-0" />
+              <span className="font-mono text-[11px] font-semibold leading-tight">{s.label}</span>
             </div>
             <p className="mt-1 font-mono text-[10px] text-muted-foreground line-clamp-2">{s.detail}</p>
           </div>

@@ -18,7 +18,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link to="/" className="flex items-center gap-2.5 group">
             <BrandIcon className="size-7 transition-transform group-hover:scale-105" />
             <BrandLogo className="h-3.5" alt="Comptext" />
-            <span className="text-xs text-muted-foreground font-mono hidden sm:inline">/web</span>
+            <span className="text-xs text-muted-foreground font-mono hidden sm:inline">/context-lab</span>
           </Link>
           <nav className="flex items-center gap-1 text-sm font-mono">
             <NavLink to="/workspace">workspace</NavLink>

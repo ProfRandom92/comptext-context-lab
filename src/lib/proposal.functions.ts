@@ -11,6 +11,12 @@ type PackRow = {
   pack_json: {
     files: { path: string; preview: string }[];
     stats: { fileCount: number; totalBytes: number };
+    evidence?: {
+      mode?: string;
+      surfaces?: string[];
+      claim_boundaries?: string[];
+      replay_sidecar?: { expected?: boolean; detected_paths?: string[] };
+    };
   };
 };
 
@@ -20,6 +26,9 @@ const PROPOSAL_SCHEMA = {
     summary: { type: "string" },
     plan: { type: "array", items: { type: "string" } },
     affected_files: { type: "array", items: { type: "string" } },
+    affected_evidence_surfaces: { type: "array", items: { type: "string" } },
+    validation_commands: { type: "array", items: { type: "string" } },
+    claim_boundaries: { type: "array", items: { type: "string" } },
     diffs: {
       type: "array",
       items: {
@@ -35,7 +44,10 @@ const PROPOSAL_SCHEMA = {
     },
     risks: { type: "array", items: { type: "string" } },
   },
-  required: ["summary", "plan", "affected_files", "diffs", "risks"],
+  required: [
+    "summary", "plan", "affected_files", "affected_evidence_surfaces",
+    "validation_commands", "claim_boundaries", "diffs", "risks",
+  ],
   additionalProperties: false,
 } as const;
 
@@ -60,10 +72,15 @@ export const askProvider = createServerFn({ method: "POST" })
     const model = "google/gemini-3-flash-preview";
 
     if (data.provider === "dummy") {
+      const surfaces = pack.pack_json.evidence?.surfaces ?? [];
+      const claimBoundaries = pack.pack_json.evidence?.claim_boundaries ?? [];
       const dummy = {
         summary: `Dry-run: would address task "${pack.task}" against ${pack.repo_url}@${pack.ref}.`,
         plan: ["Inspect repository structure", "Identify target files", "Draft minimal change", "Validate locally"],
         affected_files: pack.pack_json.files.slice(0, 3).map((f) => f.path),
+        affected_evidence_surfaces: surfaces,
+        validation_commands: ["# dummy provider — no validation commands generated"],
+        claim_boundaries: claimBoundaries.concat(["Dummy provider — illustrative output only, not a real proposal."]),
         diffs: [],
         risks: ["Dummy provider — no real model output"],
       };
@@ -89,15 +106,28 @@ export const askProvider = createServerFn({ method: "POST" })
       preview: f.preview.slice(0, 2400),
     }));
 
+    const evidence = pack.pack_json.evidence;
+    const evidenceBlock = evidence
+      ? `\n\nEvidence context:\n- mode: ${evidence.mode ?? "custom"}\n- surfaces: ${(evidence.surfaces ?? []).join(", ") || "(none)"}\n- claim boundaries: ${(evidence.claim_boundaries ?? []).join(" | ") || "(none)"}\n- replay sidecar expected: ${evidence.replay_sidecar?.expected ? "yes" : "no"}\n- replay sidecar paths: ${(evidence.replay_sidecar?.detected_paths ?? []).slice(0, 8).join(", ") || "(none)"}`
+      : "";
+
     const messages = [
       {
         role: "system",
         content:
-          "You are CompText, a proposal-gated AI engineer. You receive a deterministic Context Pack (repo files + a task) and respond with a STRUCTURED proposal — never apply changes. Be concise, conservative, and honest about uncertainty. Output must match the provided JSON schema exactly.",
+          "You are CompText Context Lab, a proposal-gated AI engineer. You receive a deterministic Context Pack (repo files + a task + evidence context). " +
+          "Strict rules:\n" +
+          "1. Output a PROPOSAL ONLY. Never claim that changes were applied.\n" +
+          "2. Never claim production readiness, certification, compliance, or legal evidentiary status.\n" +
+          "3. Explicitly state uncertainty when files or context are missing.\n" +
+          "4. When validation/CI/test paths are visible, include concrete validation commands (e.g. `cargo test`, `npm test`, fixture replays). Otherwise leave validation_commands as a one-line note that none are visible.\n" +
+          "5. Include claim_boundaries that match the provided evidence context (e.g. SPARK-style not SPARK-certified; fixture-bound metrics).\n" +
+          "6. Include affected_evidence_surfaces listing which evidence surfaces (replay sidecar, artifacts/, schemas/, validation/, docs, ci) the proposal touches.\n" +
+          "7. Be concise and conservative. Output MUST match the provided JSON schema exactly.",
       },
       {
         role: "user",
-        content: `Repository: ${pack.repo_url}@${pack.ref}\nTask: ${pack.task}\n\nContext Pack files (${filesForPrompt.length}):\n\n` +
+        content: `Repository: ${pack.repo_url}@${pack.ref}\nTask: ${pack.task}${evidenceBlock}\n\nContext Pack files (${filesForPrompt.length}):\n\n` +
           filesForPrompt
             .map((f) => `--- ${f.path} ---\n${f.preview}`)
             .join("\n\n"),
@@ -221,7 +251,7 @@ export const listArtifacts = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data: packs } = await context.supabase
       .from("context_packs")
-      .select("id, repo_url, ref, task, gate_status, file_count, sha256, created_at")
+      .select("id, repo_url, ref, task, gate_status, file_count, sha256, created_at, pack_json")
       .order("created_at", { ascending: false })
       .limit(50);
     const { data: proposals } = await context.supabase
@@ -234,5 +264,50 @@ export const listArtifacts = createServerFn({ method: "GET" })
       .select("id, proposal_id, status, notes, created_at")
       .order("created_at", { ascending: false })
       .limit(50);
-    return { packs: packs ?? [], proposals: proposals ?? [], reviews: reviews ?? [] };
+
+    const packsOut = (packs ?? []).map((p) => {
+      const pj = p.pack_json as { evidence?: { mode?: string }; commit?: string } | null;
+      return {
+        id: p.id,
+        repo_url: p.repo_url,
+        ref: p.ref,
+        task: p.task,
+        gate_status: p.gate_status,
+        file_count: p.file_count,
+        sha256: p.sha256,
+        created_at: p.created_at,
+        mode: (pj?.evidence?.mode ?? "custom") as string,
+        commit: pj?.commit ?? null,
+      };
+    });
+
+    // Build evidence ledger: one row per pack with rolled-up provider/review state
+    const proposalsByPack = new Map<string, typeof proposals extends (infer T)[] | null ? T : never>();
+    for (const pr of proposals ?? []) {
+      if (!proposalsByPack.has(pr.pack_id)) proposalsByPack.set(pr.pack_id, pr);
+    }
+    const reviewsByProposal = new Map<string, typeof reviews extends (infer T)[] | null ? T : never>();
+    for (const r of reviews ?? []) {
+      if (!reviewsByProposal.has(r.proposal_id)) reviewsByProposal.set(r.proposal_id, r);
+    }
+    const ledger = packsOut.map((p) => {
+      const prop = proposalsByPack.get(p.id) ?? null;
+      const rev = prop ? (reviewsByProposal.get(prop.id) ?? null) : null;
+      return {
+        pack_id: p.id,
+        repo_url: p.repo_url,
+        ref: p.ref,
+        commit: p.commit,
+        sha256: p.sha256,
+        gate_status: p.gate_status,
+        provider_status: prop ? (prop.valid ? "valid" : "invalid") : "—",
+        provider: prop?.provider ?? null,
+        review_status: rev?.status ?? "—",
+        file_count: p.file_count,
+        created_at: p.created_at,
+        mode: p.mode,
+      };
+    });
+
+    return { packs: packsOut, proposals: proposals ?? [], reviews: reviews ?? [], ledger };
   });
