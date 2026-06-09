@@ -72,10 +72,15 @@ export const askProvider = createServerFn({ method: "POST" })
     const model = "google/gemini-3-flash-preview";
 
     if (data.provider === "dummy") {
+      const surfaces = pack.pack_json.evidence?.surfaces ?? [];
+      const claimBoundaries = pack.pack_json.evidence?.claim_boundaries ?? [];
       const dummy = {
         summary: `Dry-run: would address task "${pack.task}" against ${pack.repo_url}@${pack.ref}.`,
         plan: ["Inspect repository structure", "Identify target files", "Draft minimal change", "Validate locally"],
         affected_files: pack.pack_json.files.slice(0, 3).map((f) => f.path),
+        affected_evidence_surfaces: surfaces,
+        validation_commands: ["# dummy provider — no validation commands generated"],
+        claim_boundaries: claimBoundaries.concat(["Dummy provider — illustrative output only, not a real proposal."]),
         diffs: [],
         risks: ["Dummy provider — no real model output"],
       };
@@ -101,15 +106,28 @@ export const askProvider = createServerFn({ method: "POST" })
       preview: f.preview.slice(0, 2400),
     }));
 
+    const evidence = pack.pack_json.evidence;
+    const evidenceBlock = evidence
+      ? `\n\nEvidence context:\n- mode: ${evidence.mode ?? "custom"}\n- surfaces: ${(evidence.surfaces ?? []).join(", ") || "(none)"}\n- claim boundaries: ${(evidence.claim_boundaries ?? []).join(" | ") || "(none)"}\n- replay sidecar expected: ${evidence.replay_sidecar?.expected ? "yes" : "no"}\n- replay sidecar paths: ${(evidence.replay_sidecar?.detected_paths ?? []).slice(0, 8).join(", ") || "(none)"}`
+      : "";
+
     const messages = [
       {
         role: "system",
         content:
-          "You are CompText, a proposal-gated AI engineer. You receive a deterministic Context Pack (repo files + a task) and respond with a STRUCTURED proposal — never apply changes. Be concise, conservative, and honest about uncertainty. Output must match the provided JSON schema exactly.",
+          "You are CompText Context Lab, a proposal-gated AI engineer. You receive a deterministic Context Pack (repo files + a task + evidence context). " +
+          "Strict rules:\n" +
+          "1. Output a PROPOSAL ONLY. Never claim that changes were applied.\n" +
+          "2. Never claim production readiness, certification, compliance, or legal evidentiary status.\n" +
+          "3. Explicitly state uncertainty when files or context are missing.\n" +
+          "4. When validation/CI/test paths are visible, include concrete validation commands (e.g. `cargo test`, `npm test`, fixture replays). Otherwise leave validation_commands as a one-line note that none are visible.\n" +
+          "5. Include claim_boundaries that match the provided evidence context (e.g. SPARK-style not SPARK-certified; fixture-bound metrics).\n" +
+          "6. Include affected_evidence_surfaces listing which evidence surfaces (replay sidecar, artifacts/, schemas/, validation/, docs, ci) the proposal touches.\n" +
+          "7. Be concise and conservative. Output MUST match the provided JSON schema exactly.",
       },
       {
         role: "user",
-        content: `Repository: ${pack.repo_url}@${pack.ref}\nTask: ${pack.task}\n\nContext Pack files (${filesForPrompt.length}):\n\n` +
+        content: `Repository: ${pack.repo_url}@${pack.ref}\nTask: ${pack.task}${evidenceBlock}\n\nContext Pack files (${filesForPrompt.length}):\n\n` +
           filesForPrompt
             .map((f) => `--- ${f.path} ---\n${f.preview}`)
             .join("\n\n"),
