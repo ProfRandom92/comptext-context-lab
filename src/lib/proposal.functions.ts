@@ -251,7 +251,7 @@ export const listArtifacts = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data: packs } = await context.supabase
       .from("context_packs")
-      .select("id, repo_url, ref, task, gate_status, file_count, sha256, created_at")
+      .select("id, repo_url, ref, task, gate_status, file_count, sha256, created_at, pack_json")
       .order("created_at", { ascending: false })
       .limit(50);
     const { data: proposals } = await context.supabase
@@ -264,5 +264,50 @@ export const listArtifacts = createServerFn({ method: "GET" })
       .select("id, proposal_id, status, notes, created_at")
       .order("created_at", { ascending: false })
       .limit(50);
-    return { packs: packs ?? [], proposals: proposals ?? [], reviews: reviews ?? [] };
+
+    const packsOut = (packs ?? []).map((p) => {
+      const pj = p.pack_json as { evidence?: { mode?: string }; commit?: string } | null;
+      return {
+        id: p.id,
+        repo_url: p.repo_url,
+        ref: p.ref,
+        task: p.task,
+        gate_status: p.gate_status,
+        file_count: p.file_count,
+        sha256: p.sha256,
+        created_at: p.created_at,
+        mode: (pj?.evidence?.mode ?? "custom") as string,
+        commit: pj?.commit ?? null,
+      };
+    });
+
+    // Build evidence ledger: one row per pack with rolled-up provider/review state
+    const proposalsByPack = new Map<string, typeof proposals extends (infer T)[] | null ? T : never>();
+    for (const pr of proposals ?? []) {
+      if (!proposalsByPack.has(pr.pack_id)) proposalsByPack.set(pr.pack_id, pr);
+    }
+    const reviewsByProposal = new Map<string, typeof reviews extends (infer T)[] | null ? T : never>();
+    for (const r of reviews ?? []) {
+      if (!reviewsByProposal.has(r.proposal_id)) reviewsByProposal.set(r.proposal_id, r);
+    }
+    const ledger = packsOut.map((p) => {
+      const prop = proposalsByPack.get(p.id) ?? null;
+      const rev = prop ? (reviewsByProposal.get(prop.id) ?? null) : null;
+      return {
+        pack_id: p.id,
+        repo_url: p.repo_url,
+        ref: p.ref,
+        commit: p.commit,
+        sha256: p.sha256,
+        gate_status: p.gate_status,
+        provider_status: prop ? (prop.valid ? "valid" : "invalid") : "—",
+        provider: prop?.provider ?? null,
+        review_status: rev?.status ?? "—",
+        file_count: p.file_count,
+        created_at: p.created_at,
+        mode: p.mode,
+      };
+    });
+
+    return { packs: packsOut, proposals: proposals ?? [], reviews: reviews ?? [], ledger };
   });
