@@ -11,6 +11,12 @@ type PackRow = {
   pack_json: {
     files: { path: string; preview: string }[];
     stats: { fileCount: number; totalBytes: number };
+    evidence?: {
+      mode?: string;
+      surfaces?: string[];
+      claim_boundaries?: string[];
+      replay_sidecar?: { expected?: boolean; detected_paths?: string[] };
+    };
   };
 };
 
@@ -20,6 +26,9 @@ const PROPOSAL_SCHEMA = {
     summary: { type: "string" },
     plan: { type: "array", items: { type: "string" } },
     affected_files: { type: "array", items: { type: "string" } },
+    affected_evidence_surfaces: { type: "array", items: { type: "string" } },
+    validation_commands: { type: "array", items: { type: "string" } },
+    claim_boundaries: { type: "array", items: { type: "string" } },
     diffs: {
       type: "array",
       items: {
@@ -35,7 +44,10 @@ const PROPOSAL_SCHEMA = {
     },
     risks: { type: "array", items: { type: "string" } },
   },
-  required: ["summary", "plan", "affected_files", "diffs", "risks"],
+  required: [
+    "summary", "plan", "affected_files", "affected_evidence_surfaces",
+    "validation_commands", "claim_boundaries", "diffs", "risks",
+  ],
   additionalProperties: false,
 } as const;
 

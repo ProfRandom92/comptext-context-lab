@@ -9,6 +9,7 @@ import {
   shouldInclude,
   stableStringify,
 } from "@/lib/policy";
+import { DEMO_MODES, type DemoModeId } from "@/lib/demo-modes";
 
 type GhTreeEntry = { path: string; type: string; size?: number; sha: string };
 
@@ -27,11 +28,26 @@ async function gh(url: string): Promise<unknown> {
   return res.json();
 }
 
+const MODE_ENUM = z.enum(["cli-audit", "spark-evidence", "replay-drift", "custom"]);
+
 const InspectInput = z.object({
   repoUrl: z.string().url(),
   ref: z.string().min(1).max(80).default("main"),
   task: z.string().min(3).max(2000),
+  mode: MODE_ENUM.default("custom"),
 });
+
+const REPLAY_PATH_HINTS = ["replay", "sidecar", "trace", "evidence", "fixture", "drift", "spark"];
+
+function detectReplayPaths(paths: string[]): string[] {
+  const out: string[] = [];
+  for (const p of paths) {
+    const lc = p.toLowerCase();
+    if (REPLAY_PATH_HINTS.some((h) => lc.includes(h))) out.push(p);
+    if (out.length >= 24) break;
+  }
+  return out;
+}
 
 export const inspectRepo = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -41,7 +57,6 @@ export const inspectRepo = createServerFn({ method: "POST" })
     if (!parsed) throw new Error("Invalid GitHub repository URL");
     const { owner, repo } = parsed;
 
-    // Resolve ref → tree SHA
     const branch = (await gh(
       `https://api.github.com/repos/${owner}/${repo}/branches/${encodeURIComponent(data.ref)}`,
     )) as { commit: { sha: string; commit: { tree: { sha: string } } } };
@@ -60,7 +75,6 @@ export const inspectRepo = createServerFn({ method: "POST" })
       .sort((a, b) => a.path.localeCompare(b.path))
       .slice(0, policy.maxFiles);
 
-    // Fetch contents via raw URL (anonymous, public repos only for MVP)
     const files: { path: string; sha: string; size: number; sha256: string; preview: string }[] = [];
     let blocked: string | null = null;
     let totalBytes = 0;
@@ -88,6 +102,32 @@ export const inspectRepo = createServerFn({ method: "POST" })
       totalBytes += text.length;
     }
 
+    const allPaths = tree.tree.filter((e) => e.type === "blob").map((e) => e.path);
+    const detectedReplayPaths = detectReplayPaths(allPaths);
+    const mode = data.mode;
+    const modeMeta = DEMO_MODES[mode];
+    const replayExpected = mode === "spark-evidence" || mode === "replay-drift";
+
+    const evidence = {
+      mode,
+      surfaces: modeMeta.surfaces,
+      claim_boundaries: modeMeta.claimBoundaries,
+      integrity: {
+        canonical_serialization: "stableStringify/v1",
+        pack_sha256: "", // filled after hash
+        file_sha256_count: files.length,
+      },
+      replay_sidecar: {
+        expected: replayExpected,
+        detected_paths: detectedReplayPaths,
+        notes: replayExpected
+          ? detectedReplayPaths.length === 0
+            ? ["No replay-sidecar paths detected — verify fixtures present in repository."]
+            : [`Detected ${detectedReplayPaths.length} candidate path(s) by hint match.`]
+          : ["Replay sidecar not expected for this mode."],
+      },
+    };
+
     const pack = {
       schema: "comptext.context-pack/v1",
       repo: { owner, repo, url: `https://github.com/${owner}/${repo}` },
@@ -97,9 +137,11 @@ export const inspectRepo = createServerFn({ method: "POST" })
       policy: { allowGlobs: policy.allowGlobs, denyGlobs: policy.denyGlobs, maxFileKb: policy.maxFileKb, maxFiles: policy.maxFiles },
       files,
       stats: { fileCount: files.length, totalBytes, treeTruncated: tree.truncated },
+      evidence,
     };
     const packStr = stableStringify(pack);
     const packSha = createHash("sha256").update(packStr).digest("hex");
+    pack.evidence.integrity.pack_sha256 = packSha;
 
     const gateStatus: "pass" | "blocked" = blocked ? "blocked" : "pass";
     const gateReason = blocked ?? (files.length === 0 ? "No files matched the allow policy" : null);
@@ -129,11 +171,25 @@ export const listPacks = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data, error } = await context.supabase
       .from("context_packs")
-      .select("id, repo_url, ref, task, sha256, gate_status, file_count, created_at")
+      .select("id, repo_url, ref, task, sha256, gate_status, file_count, created_at, pack_json")
       .order("created_at", { ascending: false })
       .limit(100);
     if (error) { console.error("[db:list packs]", error.message); throw new Error("A database error occurred. Please try again."); }
-    return { packs: data ?? [] };
+    const trimmed = (data ?? []).map((p) => {
+      const pj = p.pack_json as { evidence?: { mode?: string } } | null;
+      return {
+        id: p.id,
+        repo_url: p.repo_url,
+        ref: p.ref,
+        task: p.task,
+        sha256: p.sha256,
+        gate_status: p.gate_status,
+        file_count: p.file_count,
+        created_at: p.created_at,
+        mode: (pj?.evidence?.mode ?? "custom") as DemoModeId,
+      };
+    });
+    return { packs: trimmed };
   });
 
 export const getPack = createServerFn({ method: "POST" })
@@ -173,8 +229,19 @@ export const getPack = createServerFn({ method: "POST" })
 // ─── Repo Inspector ──────────────────────────────────────────────────────────
 
 export type RepoFileKind =
-  | "manifest" | "rustSource" | "doc" | "config" | "test"
-  | "example" | "comptextConfig" | "ci" | "other";
+  | "manifest"
+  | "comptextConfig"
+  | "replaySidecar"
+  | "artifact"
+  | "schema"
+  | "benchmark"
+  | "validation"
+  | "docs"
+  | "ci"
+  | "source"
+  | "config"
+  | "tests"
+  | "other";
 
 export type RepoPreview = {
   owner: string;
@@ -191,21 +258,54 @@ export type RepoPreview = {
     hasComptextConfig: boolean;
     hasTests: boolean;
     hasCi: boolean;
+    hasReplaySidecar: boolean;
+    hasArtifacts: boolean;
+    hasSchemas: boolean;
+    hasBenchmarks: boolean;
+    hasValidation: boolean;
   };
-  topFiles: { path: string; kind: RepoFileKind; size: number }[];
+  evidenceSurfaces: string[];
+  replaySidecarPaths: string[];
+  topFiles: { path: string; kind: RepoFileKind; size: number; detectedTags: string[] }[];
   truncated: boolean;
+  mode: DemoModeId;
 };
 
+const DETECT_TAG_HINTS = ["replay", "sidecar", "trace", "context", "validation", "evidence", "fixture", "drift", "spark"];
+
+function detectTags(path: string): string[] {
+  const lc = path.toLowerCase();
+  return DETECT_TAG_HINTS.filter((h) => lc.includes(h));
+}
 
 function classify(path: string): RepoFileKind {
   const p = path.toLowerCase();
   if (p.startsWith(".comptext/") || p === "comptext.toml" || p.endsWith("/comptext.toml")) return "comptextConfig";
   if (p.startsWith(".github/")) return "ci";
   if (p === "cargo.toml" || p.endsWith("/cargo.toml") || p === "package.json" || p === "pyproject.toml") return "manifest";
-  if (p.startsWith("examples/")) return "example";
-  if (p.startsWith("tests/") || /(^|\/)tests?\//.test(p) || /_test\.[a-z]+$/.test(p)) return "test";
-  if (p.endsWith(".rs")) return "rustSource";
-  if (p.startsWith("readme") || p.endsWith("/readme.md") || p.endsWith(".md") || p.endsWith(".mdx") || p.startsWith("docs/")) return "doc";
+
+  if (p.startsWith("artifacts/")) return "artifact";
+  if (p.startsWith("schemas/") || p.endsWith(".schema.json")) return "schema";
+  if (p.startsWith("benchmarks/") || p.startsWith("reports/")) return "benchmark";
+  if (p.startsWith("validation/") || p.includes("/validation/")) return "validation";
+  if (p.startsWith("tests/") || /(^|\/)tests?\//.test(p) || /_test\.[a-z]+$/.test(p)) return "tests";
+
+  // Replay sidecar bucket: explicit hints
+  if (/(sidecar|replay)/.test(p)) return "replaySidecar";
+
+  if (p.startsWith("docs/") || p.startsWith("readme") || p.endsWith("/readme.md") || p.endsWith(".md") || p.endsWith(".mdx")) return "docs";
+
+  if (
+    p.startsWith("src/") ||
+    p.startsWith("core/") ||
+    p.startsWith("agy7rust/") ||
+    p.endsWith(".rs") ||
+    p.endsWith(".ts") ||
+    p.endsWith(".tsx") ||
+    p.endsWith(".py") ||
+    p.endsWith(".go")
+  ) return "source";
+
   if (p.endsWith(".toml") || p.endsWith(".yaml") || p.endsWith(".yml") || p.endsWith(".json")) return "config";
   return "other";
 }
@@ -213,6 +313,12 @@ function classify(path: string): RepoFileKind {
 const PreviewInput = z.object({
   repoUrl: z.string().url(),
   ref: z.string().min(1).max(80).default("main"),
+  mode: MODE_ENUM.default("custom"),
+});
+
+const EMPTY_BUCKETS = (): Record<RepoFileKind, number> => ({
+  manifest: 0, comptextConfig: 0, replaySidecar: 0, artifact: 0, schema: 0,
+  benchmark: 0, validation: 0, docs: 0, ci: 0, source: 0, config: 0, tests: 0, other: 0,
 });
 
 export const previewRepo = createServerFn({ method: "POST" })
@@ -232,14 +338,8 @@ export const previewRepo = createServerFn({ method: "POST" })
 
     const policy = DEFAULT_POLICY;
     const blobs = tree.tree.filter((e) => e.type === "blob");
-    const buckets: Record<RepoFileKind, number> = {
-      manifest: 0, rustSource: 0, doc: 0, config: 0, test: 0,
-      example: 0, comptextConfig: 0, ci: 0, other: 0,
-    };
-    const ineligibleByKind: Record<RepoFileKind, number> = {
-      manifest: 0, rustSource: 0, doc: 0, config: 0, test: 0,
-      example: 0, comptextConfig: 0, ci: 0, other: 0,
-    };
+    const buckets = EMPTY_BUCKETS();
+    const ineligibleByKind = EMPTY_BUCKETS();
     let eligibleFiles = 0;
     let eligibleBytes = 0;
     const enriched = blobs.map((e) => {
@@ -252,31 +352,52 @@ export const previewRepo = createServerFn({ method: "POST" })
       } else {
         ineligibleByKind[kind] += 1;
       }
-      return { path: e.path, kind, size: e.size ?? 0, eligible: inc };
+      return { path: e.path, kind, size: e.size ?? 0, eligible: inc, detectedTags: detectTags(e.path) };
     });
 
     const order: Record<RepoFileKind, number> = {
-      manifest: 0, comptextConfig: 1, rustSource: 2, doc: 3, config: 4, test: 5, example: 6, ci: 7, other: 8,
+      manifest: 0, comptextConfig: 1, replaySidecar: 2, artifact: 3, schema: 4,
+      benchmark: 5, validation: 6, source: 7, docs: 8, tests: 9, ci: 10, config: 11, other: 12,
     };
     const topFiles = enriched
       .filter((f) => f.eligible)
       .sort((a, b) => order[a.kind] - order[b.kind] || a.path.localeCompare(b.path))
-      .slice(0, 25)
-      .map(({ path, kind, size }) => ({ path, kind, size }));
+      .slice(0, 30)
+      .map(({ path, kind, size, detectedTags }) => ({ path, kind, size, detectedTags }));
+
+    const replaySidecarPaths = enriched
+      .filter((f) => f.detectedTags.some((t) => t === "replay" || t === "sidecar" || t === "trace"))
+      .slice(0, 16)
+      .map((f) => f.path);
 
     const detected = {
-      isRust: buckets.rustSource > 0 || enriched.some((f) => /(^|\/)cargo\.toml$/i.test(f.path)),
+      isRust: enriched.some((f) => f.path.endsWith(".rs")) || enriched.some((f) => /(^|\/)cargo\.toml$/i.test(f.path)),
       hasCli: enriched.some((f) => /(^|\/)src\/main\.rs$/i.test(f.path) || /(^|\/)src\/bin\//i.test(f.path)),
       hasReadme: enriched.some((f) => /(^|\/)readme(\.|$)/i.test(f.path)),
       hasComptextConfig: buckets.comptextConfig > 0,
-      hasTests: buckets.test > 0,
+      hasTests: buckets.tests > 0,
       hasCi: buckets.ci > 0,
+      hasReplaySidecar: buckets.replaySidecar > 0 || replaySidecarPaths.length > 0,
+      hasArtifacts: buckets.artifact > 0,
+      hasSchemas: buckets.schema > 0,
+      hasBenchmarks: buckets.benchmark > 0,
+      hasValidation: buckets.validation > 0,
     };
+
+    const evidenceSurfaces: string[] = [];
+    if (detected.hasReplaySidecar) evidenceSurfaces.push("replay sidecar");
+    if (detected.hasArtifacts) evidenceSurfaces.push("artifacts/");
+    if (detected.hasSchemas) evidenceSurfaces.push("schemas/");
+    if (detected.hasBenchmarks) evidenceSurfaces.push("benchmarks / reports");
+    if (detected.hasValidation) evidenceSurfaces.push("validation/");
+    if (detected.hasComptextConfig) evidenceSurfaces.push(".comptext/ config");
+    if (detected.hasCi) evidenceSurfaces.push("ci workflows");
 
     return {
       owner, repo, ref: data.ref, commitSha: branch.commit.sha,
       totals: { totalFiles: blobs.length, eligibleFiles, eligibleBytes },
-      buckets, ineligibleByKind, detected, topFiles, truncated: tree.truncated,
+      buckets, ineligibleByKind, detected,
+      evidenceSurfaces, replaySidecarPaths,
+      topFiles, truncated: tree.truncated, mode: data.mode,
     } satisfies RepoPreview;
   });
-
