@@ -3,7 +3,7 @@ import wordmarkAsset from "@/assets/comptext-logo-mark.png.asset.json";
 
 type Props = { className?: string; alt?: string };
 
-export function BrandIcon({ className = "size-7", alt = "Comptext" }: Props) {
+export function BrandIcon({ className = "size-7", alt = "CompText icon" }: Props) {
   return (
     <img
       src={iconAsset.url}
@@ -23,7 +23,7 @@ export function BrandIcon({ className = "size-7", alt = "Comptext" }: Props) {
  */
 export function BrandLogo({
   className = "h-10",
-  alt = "Comptext",
+  alt = "CompText wordmark",
   tone = "auto",
 }: Props & { tone?: "auto" | "dark" | "light" }) {
   const invert =

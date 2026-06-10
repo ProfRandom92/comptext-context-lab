@@ -214,8 +214,8 @@ function PackPage() {
                   <CardHeader className="flex-row items-center justify-between space-y-0 py-3">
                     <CardTitle className="text-sm font-mono">context-pack.json</CardTitle>
                     <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" onClick={copy}><Copy className="size-3.5" /></Button>
-                      <Button size="sm" variant="ghost" onClick={download}><Download className="size-3.5" /></Button>
+                      <Button size="sm" variant="ghost" onClick={copy} aria-label="Copy pack JSON"><Copy className="size-3.5" /></Button>
+                      <Button size="sm" variant="ghost" onClick={download} aria-label="Download pack JSON"><Download className="size-3.5" /></Button>
                     </div>
                   </CardHeader>
                   <CardContent className="p-0">
