@@ -9,7 +9,14 @@ import { listPacks } from "@/lib/pack.functions";
 import { Plus, Terminal } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/workspace")({
-  head: () => ({ meta: [{ title: "Workspace — CompText Web" }] }),
+  head: () => ({
+    meta: [
+      { title: "Workspace — CompText Web" },
+      { name: "description", content: "Manage your deterministic context packs and review AI-generated proposal artifacts in your workspace." },
+      { property: "og:title", content: "Workspace — CompText Web" },
+      { property: "og:description", content: "Manage your deterministic context packs and review AI-generated proposal artifacts in your workspace." },
+    ],
+  }),
   component: Workspace,
   errorComponent: ({ error }) => <pre className="p-6 font-mono text-sm text-blocked">{error.message}</pre>,
   notFoundComponent: () => <div className="p-6">Not found</div>,

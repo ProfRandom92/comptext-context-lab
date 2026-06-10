@@ -10,10 +10,34 @@ import { DEMO_MODE_LIST } from "@/lib/demo-modes";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "CompText Context Lab — Deterministic Context Packs & Proposal-Gated AI" },
-      { name: "description", content: "Build hashed Context Packs from repositories, separate replay-critical state from compressible payload, run explicit policy gates, and preserve model output as reviewable proposal artifacts." },
+      { title: "CompText Context Lab — Deterministic Context Packs & AI Gates" },
+      { name: "description", content: "Build hashed Context Packs, isolate replay-critical state, run policy gates, and preserve model output as reviewable proposal artifacts." },
       { property: "og:title", content: "CompText Context Lab" },
       { property: "og:description", content: "Models are providers. Context is the product. Evidence is the interface." },
+      { property: "og:url", content: "https://comptext-context.lovable.app/" },
+    ],
+    links: [{ rel: "canonical", href: "https://comptext-context.lovable.app/" }],
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          name: "CompText Context Lab",
+          url: "https://comptext-context.lovable.app",
+          description: "Reviewer console for deterministic Context Packs and proposal-gated AI workflows.",
+        }),
+      },
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          name: "CompText",
+          url: "https://comptext-context.lovable.app",
+          sameAs: ["https://github.com/ProfRandom92/comptext-cli"],
+        }),
+      },
     ],
   }),
   component: Landing,

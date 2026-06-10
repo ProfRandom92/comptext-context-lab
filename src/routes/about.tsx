@@ -9,6 +9,19 @@ export const Route = createFileRoute("/about")({
       { name: "description", content: "Why CompText exists and what this web adaptation does differently from the CLI." },
       { property: "og:title", content: "About CompText Web" },
       { property: "og:description", content: "Why CompText exists and what this web adaptation does." },
+      { property: "og:url", content: "https://comptext-context.lovable.app/about" },
+    ],
+    links: [{ rel: "canonical", href: "https://comptext-context.lovable.app/about" }],
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "AboutPage",
+          name: "About CompText Web",
+          url: "https://comptext-context.lovable.app/about",
+        }),
+      },
     ],
   }),
   component: About,

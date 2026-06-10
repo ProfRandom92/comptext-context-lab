@@ -14,8 +14,12 @@ export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
       { title: "Sign in — CompText Web" },
-      { name: "description", content: "Sign in or create an account for CompText Web." },
+      { name: "description", content: "Sign in to CompText Web to manage deterministic context packs and reviewable AI proposal artifacts." },
+      { property: "og:title", content: "Sign in — CompText Web" },
+      { property: "og:description", content: "Sign in to CompText Web to manage deterministic context packs and reviewable AI proposal artifacts." },
+      { property: "og:url", content: "https://comptext-context.lovable.app/auth" },
     ],
+    links: [{ rel: "canonical", href: "https://comptext-context.lovable.app/auth" }],
   }),
   component: AuthPage,
 });
@@ -83,6 +87,7 @@ function AuthPage() {
               <Terminal className="size-4 text-primary" />
               <span className="font-mono text-sm font-bold">comptext/web</span>
             </div>
+            <h1 className="sr-only">Sign in to CompText</h1>
             <CardTitle>Access your workspace</CardTitle>
             <CardDescription>Sign in to start a deterministic context session.</CardDescription>
           </CardHeader>
