@@ -1,0 +1,14 @@
+# CompText Context Lab
+
+> Reviewer console for deterministic Context Packs, replay sidecars, policy gates, and proposal-gated AI workflows. Models are providers, context is the product, evidence is the interface.
+
+CompText Context Lab is a browser-based companion to the comptext-cli toolchain. It builds hashed, sorted Context Packs from public GitHub repositories, isolates replay-critical state into sidecars, runs explicit policy gates (allow/deny globs, secret scan, size caps), and preserves model output as reviewable proposal artifacts that are never auto-applied.
+
+## Pages
+
+- [Home](/): What the Context Lab is and the eight-stage pipeline.
+- [About](/about): Why CompText exists and how the web app differs from the CLI.
+
+## Optional
+
+- [comptext-cli on GitHub](https://github.com/ProfRandom92/comptext-cli): The local-first Rust CLI that this app mirrors.
